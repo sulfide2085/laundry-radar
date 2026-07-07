@@ -186,6 +186,7 @@ function renderOverview(machines) {
   const total = machines.length;
   const busyRate = total ? Math.round((counts.busy / total) * 100) : 0;
   const dryerCount = machines.filter((machine) => machine.type.key === "dryer").length;
+  const reservableCount = machines.filter(isReservable).length;
   const nextBusy = machines
     .filter((machine) => machine.state === 2 && machine.finishTime)
     .sort((a, b) => new Date(a.finishTime) - new Date(b.finishTime))[0];
@@ -199,7 +200,7 @@ function renderOverview(machines) {
     <div class="overviewMetric">
       <span>正在运作</span>
       <strong>${counts.busy}</strong>
-      <small>运作率 ${busyRate}%</small>
+      <small>运作率 ${busyRate}% · 可约 ${reservableCount} 台</small>
     </div>
     <div class="overviewMetric wide">
       <span>下一台释放</span>
@@ -241,6 +242,7 @@ function renderWarmupWall() {
 
 function renderMachine(machine, index) {
   const stateInfo = stateMap[machine.state] || { label: `状态 ${machine.state}`, bucket: "unknown" };
+  const reserveInfo = reserveStatus(machine, stateInfo);
   const statusText = machineStatusText(machine, stateInfo);
   const type = machine.type || deviceTypes.washer;
   const isPinnedMachine = isPinned(machine);
@@ -282,7 +284,10 @@ function renderMachine(machine, index) {
       <div class="machineMeta">
         <div class="machineTitleRow">
           <strong title="${escapeHtml(machine.name)}">${escapeHtml(machine.name)}</strong>
-          <span class="machineBadge ${stateInfo.bucket}">${stateInfo.label}</span>
+          <span class="machineBadges">
+            <span class="machineBadge ${stateInfo.bucket}">${stateInfo.label}</span>
+            ${reserveInfo ? `<span class="machineBadge ${reserveInfo.className}" title="${escapeHtml(reserveInfo.title)}">${escapeHtml(reserveInfo.label)}</span>` : ""}
+          </span>
         </div>
         <span>${escapeHtml(type.label)} · ${escapeHtml(machine.siteName)} · ${escapeHtml(floorLabel(machine.floorCode))}</span>
         <small>${escapeHtml(statusText)}</small>
@@ -342,10 +347,39 @@ function inferType(site, item) {
 function machineStatusText(machine, stateInfo) {
   if (machine.placeholder) return "正在同步状态";
   if (stateInfo.bucket === "busy") {
-    return machine.finishTime ? `预计 ${machine.finishTime.slice(11, 16)} 完成` : "正在运作";
+    const baseText = machine.finishTime ? `预计 ${machine.finishTime.slice(11, 16)} 完成` : "正在运作";
+    const reserveInfo = reserveStatus(machine, stateInfo);
+    return reserveInfo ? `${baseText} · ${reserveInfo.label}` : baseText;
   }
   if (stateInfo.bucket === "free") return "空闲待用";
   return "状态未识别";
+}
+
+function reserveStatus(machine, stateInfo = stateMap[machine.state]) {
+  if (machine.placeholder || stateInfo?.bucket !== "busy") return null;
+  if (isReservable(machine)) {
+    return {
+      label: "可预约",
+      className: "reservable",
+      title: "这台正在运作，但当前支持预约下一轮"
+    };
+  }
+  if (isReserveEnabled(machine) && machine.reserveState !== undefined && machine.reserveState !== null) {
+    return {
+      label: "暂不可约",
+      className: "notReservable",
+      title: "这台正在运作，但当前没有开放预约名额"
+    };
+  }
+  return null;
+}
+
+function isReservable(machine) {
+  return isReserveEnabled(machine) && Number(machine.reserveState) === 1;
+}
+
+function isReserveEnabled(machine) {
+  return machine.enableReserve === true || String(machine.enableReserve).toLowerCase() === "true";
 }
 
 function sortMachines(machines) {

@@ -709,6 +709,15 @@ body.nightMode .machineCard.busy {
   color: var(--soft);
 }
 
+.machineBadges {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
 .machineBadge {
   display: inline-flex;
   align-items: center;
@@ -734,6 +743,16 @@ body.nightMode .machineCard.busy {
 
 .machineBadge.unknown {
   background: #e6ebe8;
+  color: #6d7772;
+}
+
+.machineBadge.reservable {
+  background: rgba(62, 135, 149, 0.13);
+  color: var(--accent);
+}
+
+.machineBadge.notReservable {
+  background: rgba(150, 162, 157, 0.16);
   color: #6d7772;
 }
 
