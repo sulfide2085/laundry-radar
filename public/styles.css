@@ -396,7 +396,7 @@ body.nightMode .toggleButton.active {
 
 .siteGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   align-items: stretch;
 }
@@ -454,7 +454,7 @@ body.nightMode .toggleButton.active {
   background: rgba(255, 255, 255, 0.88);
   color: #63716a;
   cursor: pointer;
-  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, opacity 160ms ease, transform 160ms ease;
 }
 
 body.nightMode .pinButton {
@@ -487,6 +487,25 @@ body.nightMode .pinButton.active {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+@media (min-width: 861px) and (hover: hover) and (pointer: fine) {
+  .machineCard .pinButton {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-2px);
+  }
+
+  .machineCard:hover .pinButton,
+  .machineCard:focus-within .pinButton {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  .machineCard .pinButton:hover {
+    transform: translateY(-1px);
+  }
 }
 
 .machineCard.placeholder::after {
