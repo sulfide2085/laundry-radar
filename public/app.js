@@ -435,8 +435,8 @@ function setAutoRefresh(isEnabled) {
 
 function statusOrder(machine) {
   const bucket = stateMap[machine.state]?.bucket || "unknown";
-  if (bucket === "busy") return 0;
-  if (bucket === "free") return 1;
+  if (bucket === "free") return 0;
+  if (bucket === "busy") return 1;
   return 2;
 }
 
