@@ -243,7 +243,6 @@ function renderWarmupWall() {
 function renderMachine(machine, index) {
   const stateInfo = stateMap[machine.state] || { label: `状态 ${machine.state}`, bucket: "unknown" };
   const reserveInfo = reserveStatus(machine, stateInfo);
-  const statusText = machineStatusText(machine, stateInfo);
   const type = machine.type || deviceTypes.washer;
   const isPinnedMachine = isPinned(machine);
   const classes = ["machineCard", stateInfo.bucket, type.key, machine.placeholder ? "placeholder" : ""]
@@ -260,10 +259,10 @@ function renderMachine(machine, index) {
           <path d="m9 15-5 5"></path>
         </svg>
       </button>
-    `;
+  `;
 
   return `
-    <article class="${classes}" style="--machine-delay: ${((index % 7) * -0.12).toFixed(2)}s" aria-label="${escapeHtml(machine.name)}，${stateInfo.label}">
+    <article class="${classes}" style="--machine-delay: ${((index % 7) * -0.12).toFixed(2)}s" aria-label="${escapeHtml(machine.name)}，${stateInfo.label}${reserveInfo ? `，${escapeHtml(reserveInfo.label)}` : ""}">
       ${pinButton}
       <div class="machineShell" aria-hidden="true">
         <div class="machineCap">
@@ -284,15 +283,27 @@ function renderMachine(machine, index) {
       <div class="machineMeta">
         <div class="machineTitleRow">
           <strong title="${escapeHtml(machine.name)}">${escapeHtml(machine.name)}</strong>
-          <span class="machineBadges">
-            <span class="machineBadge ${stateInfo.bucket}">${stateInfo.label}</span>
-            ${reserveInfo ? `<span class="machineBadge ${reserveInfo.className}" title="${escapeHtml(reserveInfo.title)}">${escapeHtml(reserveInfo.label)}</span>` : ""}
-          </span>
         </div>
-        <span>${escapeHtml(type.label)} · ${escapeHtml(machine.siteName)} · ${escapeHtml(floorLabel(machine.floorCode))}</span>
-        <small>${escapeHtml(statusText)}</small>
+        <span class="machineDetail">${escapeHtml(type.label)} · ${escapeHtml(machine.siteName)} · ${escapeHtml(floorLabel(machine.floorCode))}</span>
+        ${renderMachineFooter(machine, stateInfo, reserveInfo)}
       </div>
     </article>
+  `;
+}
+
+function renderMachineFooter(machine, stateInfo, reserveInfo) {
+  const finishText = stateInfo.bucket === "busy" && machine.finishTime
+    ? `预计 ${machine.finishTime.slice(11, 16)} 完成`
+    : "";
+
+  return `
+    <div class="machineFooter">
+      ${finishText ? `<span class="finishText">${escapeHtml(finishText)}</span>` : ""}
+      <span class="machineBadges">
+        <span class="machineBadge ${stateInfo.bucket}">${escapeHtml(stateInfo.label)}</span>
+        ${reserveInfo ? `<span class="machineBadge ${reserveInfo.className}" title="${escapeHtml(reserveInfo.title)}">${escapeHtml(reserveInfo.label)}</span>` : ""}
+      </span>
+    </div>
   `;
 }
 
@@ -342,17 +353,6 @@ function inferType(site, item) {
     return deviceTypes.dryer;
   }
   return deviceTypes.washer;
-}
-
-function machineStatusText(machine, stateInfo) {
-  if (machine.placeholder) return "正在同步状态";
-  if (stateInfo.bucket === "busy") {
-    const baseText = machine.finishTime ? `预计 ${machine.finishTime.slice(11, 16)} 完成` : "正在运作";
-    const reserveInfo = reserveStatus(machine, stateInfo);
-    return reserveInfo ? `${baseText} · ${reserveInfo.label}` : baseText;
-  }
-  if (stateInfo.bucket === "free") return "空闲待用";
-  return "状态未识别";
 }
 
 function reserveStatus(machine, stateInfo = stateMap[machine.state]) {
