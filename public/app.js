@@ -17,14 +17,16 @@ const deviceTypes = {
 const pinnedStorageKey = "laundry.pinnedMachines";
 const themeStorageKey = "laundry.theme";
 const autoRefreshIntervalMs = 5 * 60 * 1000;
+const manualRefreshMinIntervalMs = 60 * 1000;
 
 const state = {
   data: null,
   filter: "all",
-  siteFilter: "all",
+  siteFilter: "hongdou",
   pinnedMachines: readPinnedMachines(),
   timer: null,
-  messageTimer: null
+  messageTimer: null,
+  lastManualRefreshAt: 0
 };
 
 const authForm = document.querySelector("#authForm");
@@ -46,7 +48,7 @@ loadConfig();
 
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await refreshStatus();
+  await refreshStatus({ manual: true });
 });
 
 document.querySelectorAll("[data-state-filter]").forEach((button) => {
@@ -62,7 +64,7 @@ document.querySelectorAll("[data-state-filter]").forEach((button) => {
 });
 
 document.querySelectorAll("[data-site-filter]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     state.siteFilter = button.dataset.siteFilter;
     document.querySelectorAll("[data-site-filter]").forEach((item) => {
       const isActive = item === button;
@@ -70,6 +72,9 @@ document.querySelectorAll("[data-site-filter]").forEach((button) => {
       item.setAttribute("aria-pressed", String(isActive));
     });
     render();
+    if (!hasSelectedPositionData()) {
+      await refreshStatus({ quiet: true });
+    }
   });
 });
 
@@ -96,6 +101,15 @@ siteGrid.addEventListener("click", (event) => {
 });
 
 async function refreshStatus(options = {}) {
+  if (options.manual) {
+    const remainingMs = manualRefreshMinIntervalMs - (Date.now() - state.lastManualRefreshAt);
+    if (remainingMs > 0) {
+      showMessage(`手动刷新太快了，${Math.ceil(remainingMs / 1000)} 秒后再试`, "warn");
+      return;
+    }
+    state.lastManualRefreshAt = Date.now();
+  }
+
   const token = authToken.value.trim();
   if (token) {
     sessionStorage.setItem("laundry.authToken", token);
@@ -103,25 +117,54 @@ async function refreshStatus(options = {}) {
   setBusy(true);
   if (!state.data) renderSkeleton();
   if (!options.quiet) showMessage("刷新中", "info");
+  const requestPositions = selectedPositions();
 
   try {
     const response = await fetch(apiUrl("status"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ authToken: token, positions })
+      body: JSON.stringify({ authToken: token, positions: requestPositions })
     });
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.message || payload.error || `HTTP ${response.status}`);
     }
-    state.data = payload;
-    showMessage("已更新", "ok");
+    mergeStatusPayload(payload);
+    if (!options.quiet) showMessage("已更新", "ok");
     render();
   } catch (error) {
     showMessage(error.message, "error");
   } finally {
     setBusy(false);
   }
+}
+
+function mergeStatusPayload(payload) {
+  const incomingPositions = Array.isArray(payload.positions) ? payload.positions : [];
+  if (!state.data) {
+    state.data = {
+      ...payload,
+      positions: incomingPositions
+    };
+    return;
+  }
+
+  const byKey = new Map((state.data.positions || []).map((position) => [position.key, position]));
+  incomingPositions.forEach((position) => {
+    byKey.set(position.key, position);
+  });
+  const ordered = positions
+    .map((position) => byKey.get(position.key))
+    .filter(Boolean);
+  const knownKeys = new Set(positions.map((position) => position.key));
+  const extra = [...byKey.values()].filter((position) => !knownKeys.has(position.key));
+
+  state.data = {
+    ...state.data,
+    ...payload,
+    positions: ordered.concat(extra),
+    fetchedAt: payload.fetchedAt || state.data.fetchedAt
+  };
 }
 
 async function loadConfig() {
@@ -334,6 +377,17 @@ function inferSiteGroup(site) {
 function filterBySite(machines) {
   if (state.siteFilter === "all") return machines;
   return machines.filter((machine) => machine.siteGroup === state.siteFilter);
+}
+
+function selectedPositions() {
+  if (state.siteFilter === "all") return positions;
+  return positions.filter((position) => inferSiteGroup(position) === state.siteFilter);
+}
+
+function hasSelectedPositionData() {
+  if (!state.data?.positions?.length) return false;
+  const cachedKeys = new Set(state.data.positions.map((position) => position.key));
+  return selectedPositions().every((position) => cachedKeys.has(position.key));
 }
 
 function machineKey(site, item) {
