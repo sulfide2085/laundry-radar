@@ -880,6 +880,26 @@ body.nightMode .topButton {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .machineCard.busy .machineShell {
+    animation: machineRumble 170ms ease-in-out infinite alternate !important;
+    animation-delay: var(--machine-delay) !important;
+  }
+
+  .machineCard.busy .drum {
+    animation: drumSpin 950ms linear infinite !important;
+    animation-delay: var(--machine-delay) !important;
+  }
+
+  .machineCard.busy .loadBlob {
+    animation: loadTumble 720ms ease-in-out infinite alternate !important;
+  }
+
+  .machineCard.busy .statusLight {
+    animation: lightPulse 820ms ease-in-out infinite !important;
+  }
+}
+
 @media (max-width: 860px) {
   body {
     padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px));
