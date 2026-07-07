@@ -1,0 +1,9 @@
+services:
+  laundry-radar:
+    image: laundry-radar:latest
+    container_name: laundry-radar
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8787:8787"

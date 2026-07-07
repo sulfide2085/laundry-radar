@@ -1,0 +1,11 @@
+.git
+.gitignore
+.playwright-cli
+output
+node_modules
+npm-debug.log*
+Dockerfile
+docker-compose*.yml
+auth.local.json
+.env
+.env.*
