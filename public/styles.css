@@ -693,8 +693,7 @@ body.nightMode .machineCard.busy {
   line-height: 1.3;
 }
 
-.machineDetail,
-.finishText {
+.machineDetail {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -702,15 +701,9 @@ body.nightMode .machineCard.busy {
   font-size: 11px;
 }
 
-.finishText {
-  align-self: end;
-  color: var(--soft);
-}
-
 .machineFooter {
   align-self: end;
   display: grid;
-  gap: 4px;
   min-width: 0;
 }
 
@@ -1153,8 +1146,7 @@ body.nightMode .topButton {
     font-size: 10px;
   }
 
-  .machineDetail,
-  .finishText {
+  .machineDetail {
     font-size: 10px;
   }
 

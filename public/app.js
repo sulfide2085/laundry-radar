@@ -243,6 +243,7 @@ function renderWarmupWall() {
 function renderMachine(machine, index) {
   const stateInfo = stateMap[machine.state] || { label: `状态 ${machine.state}`, bucket: "unknown" };
   const reserveInfo = reserveStatus(machine, stateInfo);
+  const stateBadgeLabel = machineStateBadgeLabel(machine, stateInfo);
   const type = machine.type || deviceTypes.washer;
   const isPinnedMachine = isPinned(machine);
   const classes = ["machineCard", stateInfo.bucket, type.key, machine.placeholder ? "placeholder" : ""]
@@ -262,7 +263,7 @@ function renderMachine(machine, index) {
   `;
 
   return `
-    <article class="${classes}" style="--machine-delay: ${((index % 7) * -0.12).toFixed(2)}s" aria-label="${escapeHtml(machine.name)}，${stateInfo.label}${reserveInfo ? `，${escapeHtml(reserveInfo.label)}` : ""}">
+    <article class="${classes}" style="--machine-delay: ${((index % 7) * -0.12).toFixed(2)}s" aria-label="${escapeHtml(machine.name)}，${escapeHtml(stateBadgeLabel)}${reserveInfo ? `，${escapeHtml(reserveInfo.label)}` : ""}">
       ${pinButton}
       <div class="machineShell" aria-hidden="true">
         <div class="machineCap">
@@ -285,26 +286,28 @@ function renderMachine(machine, index) {
           <strong title="${escapeHtml(machine.name)}">${escapeHtml(machine.name)}</strong>
         </div>
         <span class="machineDetail">${escapeHtml(type.label)} · ${escapeHtml(machine.siteName)} · ${escapeHtml(floorLabel(machine.floorCode))}</span>
-        ${renderMachineFooter(machine, stateInfo, reserveInfo)}
+        ${renderMachineFooter(stateInfo, stateBadgeLabel, reserveInfo)}
       </div>
     </article>
   `;
 }
 
-function renderMachineFooter(machine, stateInfo, reserveInfo) {
-  const finishText = stateInfo.bucket === "busy" && machine.finishTime
-    ? `预计 ${machine.finishTime.slice(11, 16)} 完成`
-    : "";
-
+function renderMachineFooter(stateInfo, stateBadgeLabel, reserveInfo) {
   return `
     <div class="machineFooter">
-      ${finishText ? `<span class="finishText">${escapeHtml(finishText)}</span>` : ""}
       <span class="machineBadges">
-        <span class="machineBadge ${stateInfo.bucket}">${escapeHtml(stateInfo.label)}</span>
+        <span class="machineBadge ${stateInfo.bucket}">${escapeHtml(stateBadgeLabel)}</span>
         ${reserveInfo ? `<span class="machineBadge ${reserveInfo.className}" title="${escapeHtml(reserveInfo.title)}">${escapeHtml(reserveInfo.label)}</span>` : ""}
       </span>
     </div>
   `;
+}
+
+function machineStateBadgeLabel(machine, stateInfo) {
+  if (stateInfo.bucket === "busy" && machine.finishTime) {
+    return `预计 ${machine.finishTime.slice(11, 16)} 完成`;
+  }
+  return stateInfo.label;
 }
 
 function getMachines(sites) {
