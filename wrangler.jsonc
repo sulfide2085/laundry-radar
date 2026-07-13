@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "laundry-radar",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "SETTINGS",
+      "id": "ea487ef169d144caa0a125911efbe410"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "EMAIL_ENABLED": "true",
+    "EMAIL_SENDER_NAME": "洗烘雷达",
+    "EMAIL_SENDER": "origin2085@126.com",
+    "EMAIL_SMTP_HOST": "smtp.126.com",
+    "EMAIL_SMTP_PORT": "465",
+    "EMAIL_SMTP_SECURITY": "ssl",
+    "EMAIL_USERNAME": "origin2085@126.com",
+    "REMINDER_LEAD_MINUTES": "3",
+    "CAMPUS_LNG": "113.936759",
+    "CAMPUS_LAT": "22.532761",
+    "CAMPUS_ORGANIZATION_ID": "2000009571",
+    "POSITION_FETCH_CONCURRENCY": "8"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

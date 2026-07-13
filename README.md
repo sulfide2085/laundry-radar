@@ -2,6 +2,28 @@
 
 本地私有小工具，用来展示深圳大学粤海校区洗衣房的全部设备占用情况。
 
+## Cloudflare
+
+已部署 Workers：
+
+```text
+https://laundry-radar.sulfide2085.workers.dev
+```
+
+重新部署：
+
+```powershell
+wrangler deploy
+```
+
+SMTP 密码用密钥保存（勿写入仓库）：
+
+```powershell
+wrangler secret put EMAIL_PASSWORD
+```
+
+订阅检查用 Cron（每分钟）触发；设置数据存在 KV `SETTINGS`。
+
 ## 运行
 
 ```powershell
