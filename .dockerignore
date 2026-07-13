@@ -2,10 +2,11 @@
 .gitignore
 .playwright-cli
 output
+data
 node_modules
 npm-debug.log*
 Dockerfile
 docker-compose*.yml
-auth.local.json
+config.yaml
 .env
 .env.*

@@ -1,6 +1,7 @@
-auth.local.json
 *.log
 *.png
 node_modules/
 .playwright-cli/
 output/
+data/
+config.yaml

@@ -12,6 +12,10 @@
   --free-bg: #e0f6ea;
   --busy: #f0643b;
   --busy-bg: #ffe3d7;
+  --paused: #8a6f18;
+  --paused-bg: #fff2c2;
+  --unavailable: #6d7772;
+  --unavailable-bg: #e6ebe8;
   --accent: #3e8795;
   --accent-bg: #dceff1;
   --warn: #b98618;
@@ -33,6 +37,10 @@ body.nightMode {
   --free-bg: #163826;
   --busy: #ff7a52;
   --busy-bg: #43251d;
+  --paused: #f0c464;
+  --paused-bg: #423617;
+  --unavailable: #a9b8b1;
+  --unavailable-bg: #26332e;
   --accent: #6ab7c4;
   --accent-bg: #193b42;
   --warn: #f0c464;
@@ -101,11 +109,16 @@ button {
 }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 14px;
   min-height: 70px;
+}
+
+.topbar > div {
+  text-align: center;
 }
 
 h1,
@@ -127,71 +140,31 @@ p {
   margin-top: 3px;
 }
 
-.auth,
+.refreshActions,
 .controls {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.authStatus {
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--muted);
+.refreshActions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
-.authStatus strong {
-  color: var(--free);
-  font-size: 13px;
-}
-
-.localAuth .tokenField {
-  display: none;
-}
-
-.tokenField {
-  min-height: 40px;
-  display: grid;
-  grid-template-columns: auto minmax(220px, 340px);
-  align-items: center;
-  gap: 9px;
-  padding: 7px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  box-shadow: 0 10px 26px var(--shadow);
-}
-
-.tokenField.compact {
-  grid-template-columns: auto minmax(170px, 290px);
-}
-
-.tokenField span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.tokenField input {
-  width: 100%;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--ink);
-}
-
-.tokenField:focus-within,
 .iconButton:focus-visible,
 .segment:focus-visible,
+.filterSummaryButton:focus-visible,
+.filterPill:focus-visible,
+.roomFilterOption:focus-visible,
 .pinButton:focus-visible,
+.reminderButton:focus-visible,
 .toggleButton:focus-visible,
-.topButton:focus-visible {
+.topButton:focus-visible,
+.iconOnlyButton:focus-visible,
+input:focus-visible {
   outline: 3px solid rgba(62, 135, 149, 0.28);
   outline-offset: 2px;
 }
@@ -218,6 +191,17 @@ p {
   font-weight: 900;
 }
 
+.subscribeButton.active {
+  border-color: rgba(62, 135, 149, 0.48);
+  background: var(--accent-bg);
+  color: #1d6670;
+  font-weight: 900;
+}
+
+body.nightMode .subscribeButton.active {
+  color: #9fe6ee;
+}
+
 .iconButton:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
@@ -239,7 +223,26 @@ p {
   stroke-linejoin: round;
 }
 
-body.busy .auth .iconButton.primary .icon {
+.iconOnlyButton {
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.iconOnlyButton:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+body.busy .refreshActions .iconButton.primary .icon {
   animation: spin 900ms linear infinite;
 }
 
@@ -253,6 +256,52 @@ body.busy .auth .iconButton.primary .icon {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.filterSummaryButton {
+  min-height: 50px;
+  min-width: min(360px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  background: rgba(255, 255, 250, 0.82);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 10px 24px var(--shadow);
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+body.nightMode .filterSummaryButton {
+  background: rgba(27, 38, 33, 0.82);
+}
+
+.filterSummaryButton:hover,
+.filterSummaryButton.active {
+  border-color: rgba(62, 135, 149, 0.48);
+  background: var(--accent-bg);
+  color: #1d6670;
+  transform: translateY(-1px);
+}
+
+body.nightMode .filterSummaryButton.active,
+body.nightMode .filterSummaryButton:hover {
+  color: #9fe6ee;
+}
+
+.filterSummaryButton span {
+  font-weight: 900;
+}
+
+.filterSummaryButton small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  text-align: left;
 }
 
 .settingsGroup {
@@ -381,8 +430,7 @@ body.nightMode .toggleButton.active {
 
 .overviewMetric small {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
   color: var(--soft);
 }
 
@@ -436,15 +484,42 @@ body.nightMode .toggleButton.active {
   background: var(--busy);
 }
 
+.machineCard.paused {
+  border-color: rgba(185, 134, 24, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 249, 226, 0.9)),
+    var(--paused-bg);
+}
+
+.machineCard.paused::before {
+  background: var(--paused);
+}
+
+.machineCard.unavailable {
+  border-color: rgba(139, 151, 145, 0.45);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 243, 240, 0.9)),
+    var(--unavailable-bg);
+}
+
+.machineCard.unavailable::before {
+  background: var(--unavailable);
+}
+
 .machineCard.unknown::before {
   background: var(--soft);
 }
 
-.pinButton {
+.machineActions {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 2;
+  display: grid;
+  gap: 6px;
+}
+
+.pinButton {
   width: 30px;
   height: 30px;
   display: inline-grid;
@@ -489,21 +564,54 @@ body.nightMode .pinButton.active {
   stroke-linejoin: round;
 }
 
+.reminderButton {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(207, 217, 211, 0.95);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #63716a;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+body.nightMode .reminderButton {
+  border-color: rgba(49, 66, 58, 0.95);
+  background: rgba(29, 40, 36, 0.88);
+  color: #a9b8b1;
+}
+
+.reminderButton:hover {
+  border-color: var(--accent);
+  color: #1d6670;
+  transform: translateY(-1px);
+}
+
+.reminderButton.active {
+  border-color: rgba(33, 168, 107, 0.48);
+  background: var(--free-bg);
+  color: var(--free);
+}
+
 @media (min-width: 861px) and (hover: hover) and (pointer: fine) {
-  .machineCard .pinButton {
+  .machineCard .machineActions {
     opacity: 0;
     pointer-events: none;
     transform: translateY(-2px);
+    transition: opacity 160ms ease, transform 160ms ease;
   }
 
-  .machineCard:hover .pinButton,
-  .machineCard:focus-within .pinButton {
+  .machineCard:hover .machineActions,
+  .machineCard:focus-within .machineActions {
     opacity: 1;
     pointer-events: auto;
     transform: translateY(0);
   }
 
-  .machineCard .pinButton:hover {
+  .machineCard .machineActions button:hover {
     transform: translateY(-1px);
   }
 }
@@ -529,6 +637,20 @@ body.nightMode .machineCard.busy {
   background:
     linear-gradient(180deg, rgba(44, 36, 31, 0.96), rgba(38, 29, 25, 0.92)),
     var(--busy-bg);
+}
+
+body.nightMode .machineCard.paused {
+  border-color: rgba(240, 196, 100, 0.42);
+  background:
+    linear-gradient(180deg, rgba(48, 42, 27, 0.96), rgba(39, 34, 24, 0.92)),
+    var(--paused-bg);
+}
+
+body.nightMode .machineCard.unavailable {
+  border-color: rgba(127, 145, 137, 0.42);
+  background:
+    linear-gradient(180deg, rgba(35, 45, 41, 0.96), rgba(28, 38, 34, 0.92)),
+    var(--unavailable-bg);
 }
 
 .machineShell {
@@ -581,6 +703,16 @@ body.nightMode .machineCard.busy {
   animation: lightPulse 820ms ease-in-out infinite;
 }
 
+.machineCard.paused .statusLight {
+  background: var(--paused);
+  box-shadow: 0 0 0 3px rgba(185, 134, 24, 0.18);
+}
+
+.machineCard.unavailable .statusLight {
+  background: var(--unavailable);
+  box-shadow: 0 0 0 3px rgba(109, 119, 114, 0.16);
+}
+
 .machineCode {
   margin-left: auto;
   color: #5f6c66;
@@ -606,6 +738,10 @@ body.nightMode .machineCard.busy {
   background: radial-gradient(circle at 35% 28%, #fffaf0 0 8%, #ffe3bf 9% 43%, #2c3b38 44% 100%);
 }
 
+.machineCard.shoe .machineDoor {
+  background: radial-gradient(circle at 35% 28%, #f9fff5 0 8%, #d8f3cf 9% 43%, #2c3b38 44% 100%);
+}
+
 .drum {
   position: absolute;
   inset: 10px;
@@ -621,6 +757,12 @@ body.nightMode .machineCard.busy {
   background:
     conic-gradient(from 12deg, rgba(240, 100, 59, 0.24), transparent 22%, rgba(249, 167, 91, 0.34) 48%, transparent 72%, rgba(240, 100, 59, 0.24)),
     radial-gradient(circle at 50% 58%, #fff1d6, #f6b772);
+}
+
+.machineCard.shoe .drum {
+  background:
+    conic-gradient(from 16deg, rgba(33, 168, 107, 0.24), transparent 24%, rgba(62, 135, 149, 0.3) 48%, transparent 72%, rgba(33, 168, 107, 0.22)),
+    radial-gradient(circle at 50% 58%, #e9f8df, #a5d58d);
 }
 
 .machineCard.busy .drum {
@@ -722,7 +864,10 @@ body.nightMode .machineCard.busy {
 
 .machineFooter {
   align-self: end;
-  display: grid;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -758,9 +903,19 @@ body.nightMode .machineCard.busy {
   color: var(--busy);
 }
 
+.machineBadge.paused {
+  background: var(--paused-bg);
+  color: var(--paused);
+}
+
+.machineBadge.unavailable {
+  background: var(--unavailable-bg);
+  color: var(--unavailable);
+}
+
 .machineBadge.unknown {
-  background: #e6ebe8;
-  color: #6d7772;
+  background: var(--unavailable-bg);
+  color: var(--unavailable);
 }
 
 .machineBadge.reservable {
@@ -817,6 +972,371 @@ body.nightMode .machineCard.busy {
 
 .message[data-tone="error"] {
   color: var(--busy);
+}
+
+body.settingsVisible,
+body.filtersVisible {
+  overflow: hidden;
+}
+
+.filterPanel[hidden],
+.settingsPanel[hidden] {
+  display: none;
+}
+
+.filterPanel,
+.settingsPanel {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  justify-items: end;
+}
+
+.filterBackdrop,
+.settingsBackdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(16, 23, 21, 0.42);
+  cursor: pointer;
+}
+
+.filterSheet,
+.settingsSheet {
+  position: relative;
+  z-index: 1;
+  width: min(420px, calc(100vw - 24px));
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border-left: 1px solid var(--line);
+  background: var(--panel-strong);
+  box-shadow: -18px 0 46px var(--shadow);
+}
+
+.filterSheet {
+  width: min(520px, calc(100vw - 24px));
+}
+
+.filterHeader,
+.settingsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 22px;
+}
+
+h3 {
+  font-size: 15px;
+}
+
+#mailServerState[data-tone="ok"] {
+  color: var(--free);
+}
+
+#mailServerState[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.filterContent {
+  display: grid;
+  gap: 14px;
+}
+
+.filterBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.filterBlockHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.filterBlockHeader span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.filterPills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.filterPill {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.filterPill:hover,
+.filterPill.active {
+  border-color: rgba(62, 135, 149, 0.48);
+  background: var(--accent-bg);
+  color: #1d6670;
+  transform: translateY(-1px);
+}
+
+body.nightMode .filterPill:hover,
+body.nightMode .filterPill.active {
+  color: #9fe6ee;
+}
+
+.filterPill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.filterPill small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.roomSearch {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.roomFilterList {
+  max-height: min(44vh, 420px);
+  overflow-y: auto;
+  display: grid;
+  gap: 7px;
+  padding-right: 2px;
+}
+
+.roomFilterOption {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.roomFilterOption:hover,
+.roomFilterOption.active {
+  border-color: rgba(62, 135, 149, 0.48);
+  background: var(--accent-bg);
+  color: #1d6670;
+  transform: translateY(-1px);
+}
+
+body.nightMode .roomFilterOption:hover,
+body.nightMode .roomFilterOption.active {
+  color: #9fe6ee;
+}
+
+.roomFilterOption span,
+.roomFilterOption strong,
+.roomFilterOption small {
+  min-width: 0;
+  display: block;
+}
+
+.roomFilterOption strong,
+.roomFilterOption small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomFilterOption strong {
+  font-size: 14px;
+}
+
+.roomFilterOption small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.roomFilterOption em {
+  min-width: 64px;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.roomFilterOption em.open {
+  background: var(--free-bg);
+  color: var(--free);
+}
+
+.roomFilterOption em.paused {
+  background: var(--paused-bg);
+  color: var(--paused);
+}
+
+.roomFilterOption em.unknown {
+  background: var(--unavailable-bg);
+  color: var(--unavailable);
+}
+
+.filterEmpty {
+  min-height: 64px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.filterFooter {
+  position: sticky;
+  bottom: -18px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  margin: auto -18px -18px;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.settingsForm {
+  display: grid;
+  gap: 7px;
+}
+
+.fieldLabel {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.emailRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.emailRow input {
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.settingsActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsActions .toggleButton:disabled,
+.settingsForm button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+  transform: none;
+}
+
+.subscriptionBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.subscriptionList {
+  display: grid;
+  gap: 8px;
+}
+
+.subscriptionEmpty {
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.subscriptionItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.subscriptionItem strong,
+.subscriptionItem span,
+.subscriptionItem small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subscriptionItem strong {
+  font-size: 14px;
+}
+
+.subscriptionItem span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.subscriptionItem small {
+  color: var(--soft);
+}
+
+.subscriptionItem.sent {
+  border-color: rgba(33, 168, 107, 0.32);
+}
+
+.subscriptionItem.expired {
+  opacity: 0.78;
 }
 
 .topButton {
@@ -956,69 +1476,25 @@ body.nightMode .topButton {
   }
 
   .topbar > div {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    display: grid;
+    justify-items: center;
     gap: 10px;
+    text-align: center;
   }
 
   .topbar p {
     margin-top: 0;
-    white-space: nowrap;
   }
 
-  .auth {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .localAuth .auth {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .authStatus,
-  .iconButton {
-    min-height: 44px;
-  }
-
-  .tokenField {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .controls {
-    position: sticky;
-    top: 0;
-    z-index: 4;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 6px;
-    margin: 0 -2px 8px;
-    padding: 6px 2px;
-    background:
-      linear-gradient(180deg, rgba(247, 248, 243, 0.96), rgba(247, 248, 243, 0.82)),
-      transparent;
-  }
-
-  body.nightMode .controls {
-    background:
-      linear-gradient(180deg, rgba(16, 23, 21, 0.96), rgba(16, 23, 21, 0.82)),
-      transparent;
-  }
-
-  .filterGroups {
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .settingsGroup {
+  .refreshActions {
     position: fixed;
+    top: auto;
     left: 8px;
     right: 8px;
     bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     z-index: 6;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 8px;
     padding: 8px;
     border: 1px solid var(--line);
@@ -1026,10 +1502,58 @@ body.nightMode .topButton {
     background: rgba(255, 255, 250, 0.94);
     box-shadow: 0 14px 34px var(--shadow);
     backdrop-filter: blur(10px);
+    transform: none;
+  }
+
+  body.nightMode .refreshActions {
+    background: rgba(27, 38, 33, 0.94);
+  }
+
+  .iconButton {
+    min-height: 44px;
+  }
+
+  .controls {
+    position: static;
+    z-index: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 -2px 8px;
+    padding: 6px 2px;
+    background: transparent;
+  }
+
+  body.nightMode .controls {
+    background: transparent;
+  }
+
+  .filterGroups {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .filterSummaryButton {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    box-shadow: none;
+  }
+
+  .settingsGroup {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   body.nightMode .settingsGroup {
-    background: rgba(27, 38, 33, 0.94);
+    background: transparent;
   }
 
   .segmented {
@@ -1042,12 +1566,47 @@ body.nightMode .topButton {
   }
 
   .toggleButton {
+    min-width: 0;
+    flex-direction: column;
     padding: 0 8px;
+    gap: 3px;
+    line-height: 1.12;
+    text-align: center;
+    white-space: normal;
   }
 
   .toggleButton .icon {
     width: 16px;
     height: 16px;
+  }
+
+  .filterPanel,
+  .settingsPanel {
+    align-items: end;
+    justify-items: stretch;
+  }
+
+  .filterSheet,
+  .settingsSheet {
+    width: 100%;
+    height: auto;
+    max-height: calc(88vh - env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 8px 8px 0 0;
+  }
+
+  .filterSheet {
+    max-height: calc(92vh - env(safe-area-inset-bottom, 0px));
+  }
+
+  .filterPills {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .roomFilterList {
+    max-height: 42vh;
   }
 
   .overviewBar {
@@ -1065,7 +1624,7 @@ body.nightMode .topButton {
   }
 
   .overviewMetric {
-    flex: 0 0 136px;
+    flex: 0 0 172px;
     min-height: 74px;
     scroll-snap-align: start;
   }
@@ -1138,9 +1697,14 @@ body.nightMode .topButton {
     right: 12px;
   }
 
-  .pinButton {
+  .machineActions {
     top: 6px;
     right: 6px;
+    gap: 6px;
+  }
+
+  .pinButton,
+  .reminderButton {
     width: 44px;
     height: 44px;
   }
@@ -1174,7 +1738,4 @@ body.nightMode .topButton {
     font-size: 12px;
   }
 
-  .authStatus {
-    justify-content: center;
-  }
 }

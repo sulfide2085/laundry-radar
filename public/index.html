@@ -3,27 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>洗烘雷达</title>
+    <title>深大洗烘雷达</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='14' y='8' width='36' height='48' rx='6' fill='%23f7f8f3' stroke='%231d2523' stroke-width='4'/%3E%3Ccircle cx='32' cy='34' r='13' fill='%23dceff1' stroke='%231d2523' stroke-width='4'/%3E%3Ccircle cx='23' cy='18' r='3' fill='%2321a86b'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=scoped-refresh-20260707">
+    <link rel="stylesheet" href="styles.css?v=required-room-20260708">
   </head>
   <body>
     <a class="skipLink" href="#siteGrid">跳到设备列表</a>
     <main class="app">
       <header class="topbar">
         <div>
-          <h1>洗烘雷达</h1>
+          <h1>深大洗烘雷达</h1>
           <p id="updatedAt">未刷新</p>
         </div>
-        <form id="authForm" class="auth">
-          <div id="authStatus" class="authStatus" aria-live="polite">
-            <span>授权</span>
-            <strong>检测中</strong>
-          </div>
-          <label class="tokenField compact">
-            <span id="authMode">本机授权</span>
-            <input id="authToken" name="authToken" type="password" autocomplete="off" placeholder="留空自动使用本机授权">
-          </label>
+        <form id="refreshForm" class="refreshActions">
           <button class="iconButton primary" type="submit" title="刷新状态" aria-label="刷新状态">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M21 12a9 9 0 0 1-15.1 6.6"></path>
@@ -38,16 +30,21 @@
 
       <section class="controls" aria-label="筛选">
         <div class="filterGroups">
-          <div class="segmented" role="group" aria-label="位置筛选">
-            <button class="segment" data-site-filter="all" aria-pressed="false" type="button">全部</button>
-            <button class="segment active" data-site-filter="hongdou" aria-pressed="true" type="button">红豆斋</button>
-            <button class="segment" data-site-filter="basement" aria-pressed="false" type="button">负一层</button>
-          </div>
-          <div class="segmented" role="group" aria-label="状态筛选">
-            <button class="segment active" data-state-filter="all" aria-pressed="true" type="button">全部</button>
-            <button class="segment" data-state-filter="free" aria-pressed="false" type="button">空闲</button>
-            <button class="segment" data-state-filter="busy" aria-pressed="false" type="button">运作</button>
-          </div>
+          <button id="filterOpen" class="filterSummaryButton" type="button" aria-haspopup="dialog" aria-expanded="false">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 21v-7"></path>
+              <path d="M4 10V3"></path>
+              <path d="M12 21v-9"></path>
+              <path d="M12 8V3"></path>
+              <path d="M20 21v-5"></path>
+              <path d="M20 12V3"></path>
+              <path d="M2 14h4"></path>
+              <path d="M10 8h4"></path>
+              <path d="M18 16h4"></path>
+            </svg>
+            <span>筛选</span>
+            <small id="filterSummary">红豆斋</small>
+          </button>
         </div>
         <div class="settingsGroup">
           <button id="themeToggle" class="toggleButton" type="button" aria-pressed="false">
@@ -65,12 +62,96 @@
             </svg>
             <span>自动刷新（5分钟）</span>
           </button>
+          <button id="settingsOpen" class="toggleButton" type="button" aria-haspopup="dialog">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.2a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.3a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.3a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.2a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.2a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.3a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.3a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.2a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2Z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <span>设置</span>
+          </button>
         </div>
       </section>
 
       <section id="overviewBar" class="overviewBar" aria-label="总览"></section>
       <section id="summaryGrid" class="summaryGrid" aria-label="概览"></section>
       <section id="siteGrid" class="siteGrid" aria-label="设备状态"></section>
+      <section id="filterPanel" class="filterPanel" aria-label="筛选" hidden>
+        <button class="filterBackdrop" type="button" data-close-filters aria-label="关闭筛选"></button>
+        <div class="filterSheet" role="dialog" aria-modal="true" aria-labelledby="filterTitle">
+          <header class="filterHeader">
+            <div>
+              <h2 id="filterTitle">筛选</h2>
+              <p id="filterPanelSummary">红豆斋</p>
+            </div>
+            <button id="filterClose" class="iconOnlyButton" type="button" aria-label="关闭筛选">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18"></path>
+                <path d="m6 6 12 12"></path>
+              </svg>
+            </button>
+          </header>
+          <div id="filterContent" class="filterContent"></div>
+          <footer class="filterFooter">
+            <button class="toggleButton" type="button" data-reset-filters>
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 12a9 9 0 0 1 15.1-6.6"></path>
+                <path d="M18 2v4h-4"></path>
+                <path d="M21 12a9 9 0 0 1-15.1 6.6"></path>
+                <path d="M6 22v-4h4"></path>
+              </svg>
+              <span>清除</span>
+            </button>
+            <button class="iconButton primary" type="button" data-apply-filters>
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5"></path>
+              </svg>
+              <span>完成</span>
+            </button>
+          </footer>
+        </div>
+      </section>
+      <section id="settingsPanel" class="settingsPanel" aria-label="设置" hidden>
+        <button class="settingsBackdrop" type="button" data-close-settings aria-label="关闭设置"></button>
+        <div class="settingsSheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+          <header class="settingsHeader">
+            <div>
+              <h2 id="settingsTitle">设置</h2>
+              <p id="mailServerState">邮件服务未同步</p>
+            </div>
+            <button id="settingsClose" class="iconOnlyButton" type="button" aria-label="关闭设置">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18"></path>
+                <path d="m6 6 12 12"></path>
+              </svg>
+            </button>
+          </header>
+          <form id="settingsForm" class="settingsForm">
+            <label class="fieldLabel" for="emailInput">邮箱</label>
+            <div class="emailRow">
+              <input id="emailInput" name="email" type="email" autocomplete="email" inputmode="email" placeholder="me@example.com">
+              <button class="iconButton primary" type="submit">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5"></path>
+                </svg>
+                <span>保存</span>
+              </button>
+            </div>
+          </form>
+          <div class="settingsActions">
+            <button id="testEmailButton" class="toggleButton" type="button">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m22 7-8.9 5.7a2 2 0 0 1-2.2 0L2 7"></path>
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+              </svg>
+              <span>测试邮件</span>
+            </button>
+          </div>
+          <div class="subscriptionBlock">
+            <h3>提醒记录</h3>
+            <div id="subscriptionList" class="subscriptionList"></div>
+          </div>
+        </div>
+      </section>
       <div id="message" class="message" role="status" aria-live="polite"></div>
       <button id="scrollTopButton" class="topButton" type="button" title="回到顶部" aria-label="回到顶部">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -81,6 +162,6 @@
       </button>
     </main>
 
-    <script src="app.js?v=scoped-refresh-20260707" type="module"></script>
+    <script src="app.js?v=required-room-20260708" type="module"></script>
   </body>
 </html>

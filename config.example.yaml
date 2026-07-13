@@ -1,0 +1,9 @@
+email:
+  enabled: true
+  sender_name: "洗烘雷达"
+  sender: "notice@example.com"
+  smtp_host: "smtp.example.com"
+  smtp_port: 465
+  smtp_security: "ssl"
+  username: "notice@example.com"
+  password: "replace_me"
