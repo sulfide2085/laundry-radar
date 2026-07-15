@@ -1037,15 +1037,15 @@ function normalizeKeyPart(value) {
 function inferType(site, item) {
   const categoryCode = String(item.categoryCode || site.categoryCode || "");
   const text = `${categoryCode} ${site.name || ""} ${item.name || ""}`.toLowerCase();
-  // Upstream category codes: 00 washer, 02 dryer, 09 detergent dispenser (often mislabeled).
-  // Only treat as shoe washer when the device/site name actually mentions shoes.
+  // Upstream category codes: 00/09 washer, 02 dryer.
+  // Treat 09 as washer; only label shoe when the name mentions shoes.
   if (categoryCode === "02" || /烘|dryer|dry/.test(text)) {
     return deviceTypes.dryer;
   }
   if (/鞋|shoe/.test(text)) {
     return deviceTypes.shoe;
   }
-  if (categoryCode === "09" || /投放|dispenser|detergent/.test(text)) {
+  if (/投放|dispenser|detergent/.test(text)) {
     return deviceTypes.dispenser;
   }
   return deviceTypes.washer;
