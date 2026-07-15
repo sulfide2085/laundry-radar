@@ -22,11 +22,8 @@
   "vars": {
     "EMAIL_ENABLED": "true",
     "EMAIL_SENDER_NAME": "洗烘雷达",
-    "EMAIL_SENDER": "origin2085@126.com",
-    "EMAIL_SMTP_HOST": "smtp.126.com",
     "EMAIL_SMTP_PORT": "465",
     "EMAIL_SMTP_SECURITY": "ssl",
-    "EMAIL_USERNAME": "origin2085@126.com",
     "REMINDER_LEAD_MINUTES": "3",
     "CAMPUS_LNG": "113.936759",
     "CAMPUS_LAT": "22.532761",
