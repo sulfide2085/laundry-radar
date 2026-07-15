@@ -7,3 +7,10 @@ email:
   smtp_security: "ssl"
   username: "notice@example.com"
   password: "replace_me"
+
+# 南区（沧海校区）上游配置
+# 若填写 phone 和 password，系统将同时拉取南区设备数据
+# 支持环境变量覆盖: UPSTREAM_PHONE, UPSTREAM_PASSWORD, UPSTREAM_BASE_URL
+upstream:
+  phone: "138xxxxxxxx"
+  password: "your_password"
