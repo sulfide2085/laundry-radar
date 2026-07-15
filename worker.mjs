@@ -320,8 +320,10 @@ function machineKey(site, item) {
 function inferTypeLabel(site, item) {
   const categoryCode = String(item.categoryCode || site.categoryCode || "");
   const text = `${categoryCode} ${site.name || ""} ${item.name || ""}`.toLowerCase();
+  // Upstream: 00 washer, 02 dryer, 09 detergent dispenser. Shoe only if name says so.
   if (categoryCode === "02" || /烘|dryer|dry/.test(text)) return "烘干机";
-  if (categoryCode === "09" || /鞋|shoe/.test(text)) return "洗鞋机";
+  if (/鞋|shoe/.test(text)) return "洗鞋机";
+  if (categoryCode === "09" || /投放|dispenser|detergent/.test(text)) return "投放器";
   return "洗衣机";
 }
 

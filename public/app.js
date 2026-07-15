@@ -13,6 +13,7 @@ const deviceTypes = {
   washer: { key: "washer", label: "洗衣机", short: "WASH" },
   dryer: { key: "dryer", label: "烘干机", short: "DRY" },
   shoe: { key: "shoe", label: "洗鞋机", short: "SHOE" },
+  dispenser: { key: "dispenser", label: "投放器", short: "DISP" },
   other: { key: "other", label: "设备", short: "DEV" }
 };
 
@@ -1036,11 +1037,16 @@ function normalizeKeyPart(value) {
 function inferType(site, item) {
   const categoryCode = String(item.categoryCode || site.categoryCode || "");
   const text = `${categoryCode} ${site.name || ""} ${item.name || ""}`.toLowerCase();
+  // Upstream category codes: 00 washer, 02 dryer, 09 detergent dispenser (often mislabeled).
+  // Only treat as shoe washer when the device/site name actually mentions shoes.
   if (categoryCode === "02" || /烘|dryer|dry/.test(text)) {
     return deviceTypes.dryer;
   }
-  if (categoryCode === "09" || /鞋|shoe/.test(text)) {
+  if (/鞋|shoe/.test(text)) {
     return deviceTypes.shoe;
+  }
+  if (categoryCode === "09" || /投放|dispenser|detergent/.test(text)) {
+    return deviceTypes.dispenser;
   }
   return deviceTypes.washer;
 }
@@ -1205,7 +1211,8 @@ function typeOrder(type) {
   if (type === "washer") return 1;
   if (type === "dryer") return 2;
   if (type === "shoe") return 3;
-  return 4;
+  if (type === "dispenser") return 4;
+  return 5;
 }
 
 function floorOrder(floor) {
