@@ -11,6 +11,17 @@ const defaultPositions = [
   { key: "basement-dryer", name: "负一层烘干机", positionId: "37148", categoryCode: "02", floorCode: "" }
 ];
 
+// SZU 南区上游配置
+const szuBaseUrl = "https://v3-api.china-qzxy.cn";
+const szuDefaultAreaId = "1";
+const szuDefaultBuildingId = "245";
+const szuDefaultMarkId = "3";
+const szuFetchConcurrency = 2;
+const szuCacheTtl = 60 * 1000;
+const szuLoginTtl = 30 * 60 * 1000;
+let szuCache = { positions: null, fetchedAt: 0 };
+let szuLoginCache = { loginCode: null, userId: null, accountId: null, projectId: null, expiresAt: 0 };
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -61,6 +72,8 @@ export default {
 function envConfig(env) {
   const reminderLeadMinutes = Number(env.REMINDER_LEAD_MINUTES || 3);
   const positionFetchConcurrency = Math.max(1, Number(env.POSITION_FETCH_CONCURRENCY || 8) || 8);
+  const szuPhone = String(env.SZU_PHONE || "").trim();
+  const szuPassword = String(env.SZU_PASSWORD || "").trim();
   return {
     reminderLeadMinutes,
     reminderLeadMs: Math.max(1, reminderLeadMinutes) * 60 * 1000,
@@ -79,6 +92,12 @@ function envConfig(env) {
       security: String(env.EMAIL_SMTP_SECURITY || "ssl").toLowerCase(),
       username: env.EMAIL_USERNAME || "",
       password: env.EMAIL_PASSWORD || ""
+    },
+    szu: {
+      enabled: Boolean(szuPhone && szuPassword),
+      phone: szuPhone,
+      password: szuPassword,
+      baseUrl: String(env.SZU_BASE_URL || szuBaseUrl)
     }
   };
 }
@@ -562,6 +581,238 @@ async function fetchPositionCategory(position, categoryCode) {
   return { categoryCode, total, pages, items };
 }
 
+// ─── SZU 南区上游 ─────────────────────────────────────────────
+
+async function szuHashPassword(password) {
+  const data = new TextEncoder().encode(String(password));
+  const hashBuffer = await crypto.subtle.digest("MD5", data);
+  const hashHex = Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hashHex.toUpperCase().slice(-10);
+}
+
+async function ensureSzuLogin(config) {
+  if (szuLoginCache.loginCode && Date.now() < szuLoginCache.expiresAt) {
+    return szuLoginCache;
+  }
+
+  const body = new URLSearchParams({
+    identifier: "",
+    password: await szuHashPassword(config.szu.password),
+    phoneSystem: "android",
+    telephone: config.szu.phone,
+    type: "0",
+    version: "6.5.21"
+  });
+
+  const response = await fetch(`${config.szu.baseUrl}/user/login`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "user-agent": "okhttp/4.2.2"
+    },
+    body: body.toString()
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`SZU login 返回非 JSON: HTTP ${response.status}`);
+  }
+
+  if (!parsed.success || parsed.errorCode !== 0) {
+    throw new Error(`SZU 登录失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+  }
+
+  const userData = parsed.data || {};
+  const account = userData.userAccount || {};
+
+  szuLoginCache = {
+    loginCode: userData.loginCode,
+    userId: userData.userId,
+    accountId: account.accountId,
+    projectId: account.projectId,
+    expiresAt: Date.now() + szuLoginTtl
+  };
+
+  console.error(`SZU 登录成功, userId=${userData.userId}, projectId=${account.projectId}`);
+  return szuLoginCache;
+}
+
+function szuHeaders(projectId) {
+  return {
+    "Config-Project": String(projectId),
+    "Config-Keys": "module_list,advertise_type,question_list,service_phone_list,banner_list_app,activity_list_app",
+    "Host": "v3-api.china-qzxy.cn",
+    "Connection": "Keep-Alive",
+    "Accept-Encoding": "gzip",
+    "User-Agent": "okhttp/4.2.2"
+  };
+}
+
+async function szuFetchAreaList(config, loginInfo) {
+  const params = new URLSearchParams({
+    accountId: String(loginInfo.accountId),
+    telPhone: config.szu.phone,
+    areaId: szuDefaultAreaId,
+    markId: szuDefaultMarkId,
+    phoneSystem: "android",
+    loginCode: loginInfo.loginCode,
+    childTypeId: "0",
+    telephone: config.szu.phone,
+    projectId: String(loginInfo.projectId),
+    userId: String(loginInfo.userId),
+    version: "6.5.21"
+    // 不传 buildingId，获取所有楼栋（春笛、夏筝、秋瑟、冬筑）
+  });
+
+  const response = await fetch(`${config.szu.baseUrl}/device/reservation/wash/area/List/v2?${params}`, {
+    headers: szuHeaders(loginInfo.projectId)
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`SZU area/List/v2 返回非 JSON: HTTP ${response.status}`);
+  }
+
+  if (!parsed.success || parsed.errorCode !== 0) {
+    throw new Error(`SZU area/List/v2 失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+  }
+
+  return Array.isArray(parsed.data) ? parsed.data : [];
+}
+
+async function szuFetchDeviceList(config, loginInfo, area) {
+  const params = new URLSearchParams({
+    markId: szuDefaultMarkId,
+    loginCode: loginInfo.loginCode,
+    pageSize: "20",
+    childTypeId: "0",
+    telephone: config.szu.phone,
+    userId: String(loginInfo.userId),
+    version: "6.5.21",
+    buildingId: String(area.buildingId || szuDefaultBuildingId),
+    floorId: String(area.floorId || area.id || ""),
+    accountId: String(loginInfo.accountId),
+    telPhone: config.szu.phone,
+    areaId: String(area.areaId || szuDefaultAreaId),
+    pageIndex: "1",
+    phoneSystem: "android",
+    projectId: String(loginInfo.projectId)
+  });
+
+  const response = await fetch(`${config.szu.baseUrl}/device/reservation/wash/device/List?${params}`, {
+    headers: szuHeaders(loginInfo.projectId)
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`SZU device/List 返回非 JSON: HTTP ${response.status}`);
+  }
+
+  if (!parsed.success || parsed.errorCode !== 0) {
+    throw new Error(`SZU device/List 失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+  }
+
+  return Array.isArray(parsed.data) ? parsed.data : [];
+}
+
+function normalizeSZUAreaToPosition(building, devices) {
+  const buildingName = String(building.buildingName || building.name || "");
+  const name = buildingName;
+
+  return {
+    key: `szu-${building.buildingId || "0"}`,
+    name,
+    positionId: String(building.buildingId || "0"),
+    categoryCode: "00",
+    categoryCodeList: ["00"],
+    floorCode: "",
+    state: 1,
+    workTime: "",
+    idleCount: devices.filter((d) => Number(d.isUse) === 0).length,
+    reserveNum: 0,
+    enableReserve: false,
+    items: devices.map((device) => {
+      const floorCode = String(device._floorName || "").replace(/层$/, "").trim();
+      const floorPrefix = floorCode ? `${floorCode}层-` : "";
+      return {
+        deviceId: device.deviceId,
+        name: floorPrefix + (device.deviceName || device.roomName || `设备 ${device.deviceId}`),
+        state: Number(device.isUse) === 0 ? 1 : 2,
+        categoryCode: String(device.childTypeId || "00"),
+        floorCode,
+        workStatusName: device.workStatusName || "",
+        onlineStatusId: device.onlineStatusId,
+        macAddress: device.macAddress
+      };
+    }),
+    total: devices.length,
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+async function fetchSZUStatus(config) {
+  if (szuCache.positions && Date.now() - szuCache.fetchedAt < szuCacheTtl) {
+    return szuCache.positions;
+  }
+
+  const loginInfo = await ensureSzuLogin(config);
+  const areas = await szuFetchAreaList(config, loginInfo);
+
+  if (!areas.length) {
+    szuCache = { positions: [], fetchedAt: Date.now() };
+    return [];
+  }
+
+  // 按 buildingId 分组，每栋楼合并为一个 position
+  const buildingMap = new Map();
+  for (const area of areas) {
+    const bid = area.buildingId;
+    if (bid == null) continue;
+    if (!buildingMap.has(bid)) {
+      buildingMap.set(bid, { buildingId: bid, buildingName: area.buildingName, floors: [] });
+    }
+    buildingMap.get(bid).floors.push(area);
+  }
+
+  const positions = await mapLimit([...buildingMap.values()], szuFetchConcurrency, async (building) => {
+    const allDevices = [];
+    for (const area of building.floors) {
+      try {
+        const devices = await szuFetchDeviceList(config, loginInfo, area);
+        for (const d of devices) {
+          d._floorName = area.floorName;
+        }
+        allDevices.push(...devices);
+      } catch (error) {
+        console.error(`SZU ${building.buildingName} ${area.floorName || area.floorId}: ${error.message}`);
+      }
+    }
+    return normalizeSZUAreaToPosition(building, allDevices);
+  });
+
+  const validPositions = positions.filter(Boolean);
+    } catch (error) {
+      console.error(`SZU 楼层 ${area.floorId || area.id} 设备拉取失败: ${error.message}`);
+      return null;
+    }
+  });
+
+  const validPositions = positions.filter(Boolean);
+  szuCache = { positions: validPositions, fetchedAt: Date.now() };
+  return validPositions;
+}
+
 async function handleStatus(request, env, ctx) {
   const config = envConfig(env);
   try {
@@ -571,9 +822,20 @@ async function handleStatus(request, env, ctx) {
         ? payload.positions.map(normalizePositionInput).filter(Boolean)
         : null;
 
-    const positions = requested
+    const haierPositions = requested
       ? await mapLimit(requested, config.positionFetchConcurrency, (position) => fetchPosition(position))
       : await fetchAllPositions(config);
+
+    let szuPositions = [];
+    if (config.szu.enabled) {
+      try {
+        szuPositions = await fetchSZUStatus(config);
+      } catch (error) {
+        console.error(`SZU 上游拉取失败: ${error.message}`);
+      }
+    }
+
+    const positions = [...haierPositions, ...szuPositions];
 
     ctx.waitUntil(
       processSubscriptions(env, { positions }).catch((error) => {
