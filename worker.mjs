@@ -1,4 +1,5 @@
 import { connect } from "cloudflare:sockets";
+import { createHash } from "node:crypto";
 
 const SETTINGS_KEY = "settings";
 
@@ -17,10 +18,12 @@ const szuDefaultAreaId = "1";
 const szuDefaultBuildingId = "245";
 const szuDefaultMarkId = "3";
 const szuFetchConcurrency = 2;
+const szuDevicePageSize = 50;
 const szuCacheTtl = 60 * 1000;
 const szuLoginTtl = 30 * 60 * 1000;
 let szuCache = { positions: null, fetchedAt: 0 };
 let szuLoginCache = { loginCode: null, userId: null, accountId: null, projectId: null, expiresAt: 0 };
+let szuLoginPromise = null;
 
 export default {
   async fetch(request, env, ctx) {
@@ -72,8 +75,9 @@ export default {
 function envConfig(env) {
   const reminderLeadMinutes = Number(env.REMINDER_LEAD_MINUTES || 3);
   const positionFetchConcurrency = Math.max(1, Number(env.POSITION_FETCH_CONCURRENCY || 8) || 8);
-  const szuPhone = String(env.SZU_PHONE || "").trim();
-  const szuPassword = String(env.SZU_PASSWORD || "").trim();
+  // Prefer UPSTREAM_* (documented); keep SZU_* as aliases for older local configs.
+  const szuPhone = String(env.UPSTREAM_PHONE || env.SZU_PHONE || "").trim();
+  const szuPassword = String(env.UPSTREAM_PASSWORD || env.SZU_PASSWORD || "").trim();
   return {
     reminderLeadMinutes,
     reminderLeadMs: Math.max(1, reminderLeadMinutes) * 60 * 1000,
@@ -97,7 +101,7 @@ function envConfig(env) {
       enabled: Boolean(szuPhone && szuPassword),
       phone: szuPhone,
       password: szuPassword,
-      baseUrl: String(env.SZU_BASE_URL || szuBaseUrl)
+      baseUrl: String(env.UPSTREAM_BASE_URL || env.SZU_BASE_URL || szuBaseUrl)
     }
   };
 }
@@ -583,74 +587,119 @@ async function fetchPositionCategory(position, categoryCode) {
 
 // ─── SZU 南区上游 ─────────────────────────────────────────────
 
-async function szuHashPassword(password) {
-  const data = new TextEncoder().encode(String(password));
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashHex = Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return hashHex.toUpperCase().slice(-10);
+function szuHashPassword(password) {
+  // Web Crypto does not support MD5; use node:crypto via nodejs_compat.
+  return createHash("md5").update(String(password)).digest("hex").toUpperCase().slice(-10);
+}
+
+function clearSzuLoginCache() {
+  szuLoginCache = { loginCode: null, userId: null, accountId: null, projectId: null, expiresAt: 0 };
+  szuLoginPromise = null;
 }
 
 async function ensureSzuLogin(config) {
   if (szuLoginCache.loginCode && Date.now() < szuLoginCache.expiresAt) {
     return szuLoginCache;
   }
+  if (szuLoginPromise) return szuLoginPromise;
 
-  const body = new URLSearchParams({
-    identifier: "",
-    password: await szuHashPassword(config.szu.password),
-    phoneSystem: "android",
-    telephone: config.szu.phone,
-    type: "0",
-    version: "6.5.21"
-  });
+  szuLoginPromise = (async () => {
+    const body = new URLSearchParams({
+      identifier: "",
+      password: szuHashPassword(config.szu.password),
+      phoneSystem: "android",
+      telephone: config.szu.phone,
+      type: "0",
+      version: "6.5.21"
+    });
 
-  const response = await fetch(`${config.szu.baseUrl}/user/login`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      "user-agent": "okhttp/4.2.2"
-    },
-    body: body.toString()
-  });
+    const response = await fetch(`${config.szu.baseUrl}/user/login`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "user-agent": "okhttp/4.2.2"
+      },
+      body: body.toString()
+    });
 
+    const text = await response.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`SZU login 返回非 JSON: HTTP ${response.status}`);
+    }
+
+    if (!parsed.success || parsed.errorCode !== 0) {
+      throw new Error(`SZU 登录失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+    }
+
+    const userData = parsed.data || {};
+    const account = userData.userAccount || {};
+    const loginCode = userData.loginCode;
+    const userId = userData.userId;
+    const accountId = account.accountId;
+    const projectId = account.projectId;
+
+    if (!loginCode || userId == null || accountId == null || projectId == null) {
+      throw new Error("SZU 登录成功但缺少 loginCode/userId/accountId/projectId");
+    }
+
+    szuLoginCache = {
+      loginCode,
+      userId,
+      accountId,
+      projectId,
+      expiresAt: Date.now() + szuLoginTtl
+    };
+
+    console.error(`SZU 登录成功, userId=${userId}, projectId=${projectId}`);
+    return szuLoginCache;
+  })();
+
+  try {
+    return await szuLoginPromise;
+  } catch (error) {
+    clearSzuLoginCache();
+    throw error;
+  } finally {
+    szuLoginPromise = null;
+  }
+}
+
+function szuHeaders(projectId, baseUrl = szuBaseUrl) {
+  let host = "v3-api.china-qzxy.cn";
+  try {
+    host = new URL(baseUrl).host;
+  } catch {
+    // keep default host
+  }
+  return {
+    "Config-Project": String(projectId),
+    "Config-Keys": "module_list,advertise_type,question_list,service_phone_list,banner_list_app,activity_list_app",
+    Host: host,
+    Connection: "Keep-Alive",
+    "Accept-Encoding": "gzip",
+    "User-Agent": "okhttp/4.2.2"
+  };
+}
+
+async function szuParseJsonResponse(response, label) {
   const text = await response.text();
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error(`SZU login 返回非 JSON: HTTP ${response.status}`);
+    throw new Error(`${label} 返回非 JSON: HTTP ${response.status}`);
   }
-
   if (!parsed.success || parsed.errorCode !== 0) {
-    throw new Error(`SZU 登录失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+    const message = `${label} 失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`;
+    if (parsed.errorCode === 401 || /login|登录|鉴权|token/i.test(String(parsed.errorMessage || ""))) {
+      clearSzuLoginCache();
+    }
+    throw new Error(message);
   }
-
-  const userData = parsed.data || {};
-  const account = userData.userAccount || {};
-
-  szuLoginCache = {
-    loginCode: userData.loginCode,
-    userId: userData.userId,
-    accountId: account.accountId,
-    projectId: account.projectId,
-    expiresAt: Date.now() + szuLoginTtl
-  };
-
-  console.error(`SZU 登录成功, userId=${userData.userId}, projectId=${account.projectId}`);
-  return szuLoginCache;
-}
-
-function szuHeaders(projectId) {
-  return {
-    "Config-Project": String(projectId),
-    "Config-Keys": "module_list,advertise_type,question_list,service_phone_list,banner_list_app,activity_list_app",
-    "Host": "v3-api.china-qzxy.cn",
-    "Connection": "Keep-Alive",
-    "Accept-Encoding": "gzip",
-    "User-Agent": "okhttp/4.2.2"
-  };
+  return parsed;
 }
 
 async function szuFetchAreaList(config, loginInfo) {
@@ -670,29 +719,18 @@ async function szuFetchAreaList(config, loginInfo) {
   });
 
   const response = await fetch(`${config.szu.baseUrl}/device/reservation/wash/area/List/v2?${params}`, {
-    headers: szuHeaders(loginInfo.projectId)
+    headers: szuHeaders(loginInfo.projectId, config.szu.baseUrl)
   });
 
-  const text = await response.text();
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`SZU area/List/v2 返回非 JSON: HTTP ${response.status}`);
-  }
-
-  if (!parsed.success || parsed.errorCode !== 0) {
-    throw new Error(`SZU area/List/v2 失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
-  }
-
+  const parsed = await szuParseJsonResponse(response, "SZU area/List/v2");
   return Array.isArray(parsed.data) ? parsed.data : [];
 }
 
-async function szuFetchDeviceList(config, loginInfo, area) {
+async function szuFetchDevicePage(config, loginInfo, area, pageIndex, pageSize) {
   const params = new URLSearchParams({
     markId: szuDefaultMarkId,
     loginCode: loginInfo.loginCode,
-    pageSize: "20",
+    pageSize: String(pageSize),
     childTypeId: "0",
     telephone: config.szu.phone,
     userId: String(loginInfo.userId),
@@ -702,37 +740,80 @@ async function szuFetchDeviceList(config, loginInfo, area) {
     accountId: String(loginInfo.accountId),
     telPhone: config.szu.phone,
     areaId: String(area.areaId || szuDefaultAreaId),
-    pageIndex: "1",
+    pageIndex: String(pageIndex),
     phoneSystem: "android",
     projectId: String(loginInfo.projectId)
   });
 
   const response = await fetch(`${config.szu.baseUrl}/device/reservation/wash/device/List?${params}`, {
-    headers: szuHeaders(loginInfo.projectId)
+    headers: szuHeaders(loginInfo.projectId, config.szu.baseUrl)
   });
 
-  const text = await response.text();
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`SZU device/List 返回非 JSON: HTTP ${response.status}`);
-  }
-
-  if (!parsed.success || parsed.errorCode !== 0) {
-    throw new Error(`SZU device/List 失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
-  }
-
+  const parsed = await szuParseJsonResponse(response, "SZU device/List");
   return Array.isArray(parsed.data) ? parsed.data : [];
+}
+
+async function szuFetchDeviceList(config, loginInfo, area) {
+  const pageSize = szuDevicePageSize;
+  const allDevices = [];
+  let pageIndex = 1;
+
+  while (pageIndex <= 20) {
+    const pageItems = await szuFetchDevicePage(config, loginInfo, area, pageIndex, pageSize);
+    allDevices.push(...pageItems);
+    if (pageItems.length < pageSize) break;
+    pageIndex += 1;
+  }
+
+  return allDevices;
+}
+
+function normalizeSzuFinishTime(device) {
+  const candidates = [
+    device.finishTime,
+    device.endTime,
+    device.remainTime,
+    device.remainSeconds,
+    device.leftTime,
+    device.workEndTime,
+    device.预计完成时间
+  ];
+  for (const value of candidates) {
+    if (value == null || value === "") continue;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      // Treat small numbers as remaining minutes/seconds rather than epoch.
+      if (value > 0 && value < 24 * 60) {
+        return new Date(Date.now() + value * 60 * 1000).toISOString();
+      }
+      if (value > 0 && value < 24 * 60 * 60) {
+        return new Date(Date.now() + value * 1000).toISOString();
+      }
+      if (value > 1e11) return new Date(value).toISOString();
+      if (value > 1e9) return new Date(value * 1000).toISOString();
+    }
+    const text = String(value).trim();
+    if (!text) continue;
+    if (/^\d+$/.test(text)) {
+      const number = Number(text);
+      if (number > 0 && number < 24 * 60) {
+        return new Date(Date.now() + number * 60 * 1000).toISOString();
+      }
+      if (number > 0 && number < 24 * 60 * 60) {
+        return new Date(Date.now() + number * 1000).toISOString();
+      }
+    }
+    const parsed = normalizeDateText(text);
+    if (parsed) return parsed;
+  }
+  return "";
 }
 
 function normalizeSZUAreaToPosition(building, devices) {
   const buildingName = String(building.buildingName || building.name || "");
-  const name = buildingName;
 
   return {
     key: `szu-${building.buildingId || "0"}`,
-    name,
+    name: buildingName,
     positionId: String(building.buildingId || "0"),
     categoryCode: "00",
     categoryCodeList: ["00"],
@@ -751,6 +832,7 @@ function normalizeSZUAreaToPosition(building, devices) {
         state: Number(device.isUse) === 0 ? 1 : 2,
         categoryCode: String(device.childTypeId || "00"),
         floorCode,
+        finishTime: normalizeSzuFinishTime(device),
         workStatusName: device.workStatusName || "",
         onlineStatusId: device.onlineStatusId,
         macAddress: device.macAddress
@@ -802,15 +884,24 @@ async function fetchSZUStatus(config) {
   });
 
   const validPositions = positions.filter(Boolean);
-    } catch (error) {
-      console.error(`SZU 楼层 ${area.floorId || area.id} 设备拉取失败: ${error.message}`);
-      return null;
-    }
-  });
-
-  const validPositions = positions.filter(Boolean);
   szuCache = { positions: validPositions, fetchedAt: Date.now() };
   return validPositions;
+}
+
+async function fetchCombinedPositions(config, requested = null) {
+  const haierPromise = requested
+    ? mapLimit(requested, config.positionFetchConcurrency, (position) => fetchPosition(position))
+    : fetchAllPositions(config);
+
+  const szuPromise = config.szu.enabled
+    ? fetchSZUStatus(config).catch((error) => {
+        console.error(`SZU 上游拉取失败: ${error.message}`);
+        return [];
+      })
+    : Promise.resolve([]);
+
+  const [haierPositions, szuPositions] = await Promise.all([haierPromise, szuPromise]);
+  return [...haierPositions, ...szuPositions];
 }
 
 async function handleStatus(request, env, ctx) {
@@ -822,20 +913,7 @@ async function handleStatus(request, env, ctx) {
         ? payload.positions.map(normalizePositionInput).filter(Boolean)
         : null;
 
-    const haierPositions = requested
-      ? await mapLimit(requested, config.positionFetchConcurrency, (position) => fetchPosition(position))
-      : await fetchAllPositions(config);
-
-    let szuPositions = [];
-    if (config.szu.enabled) {
-      try {
-        szuPositions = await fetchSZUStatus(config);
-      } catch (error) {
-        console.error(`SZU 上游拉取失败: ${error.message}`);
-      }
-    }
-
-    const positions = [...haierPositions, ...szuPositions];
+    const positions = await fetchCombinedPositions(config, requested);
 
     ctx.waitUntil(
       processSubscriptions(env, { positions }).catch((error) => {
@@ -1077,7 +1155,7 @@ async function processSubscriptions(env, { positions } = {}) {
   let machineList = positions ? buildMachineList(positions) : null;
   if (!machineList) {
     try {
-      machineList = buildMachineList(await fetchAllPositions(config));
+      machineList = buildMachineList(await fetchCombinedPositions(config));
     } catch (error) {
       console.error(`subscription status fetch failed: ${error.message}`);
     }

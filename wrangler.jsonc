@@ -1,4 +1,6 @@
 {
+  // Worker 部署当前标注为不可用：合并南区上游后请先完成验证，再 wrangler deploy。
+  // 详见 README「Cloudflare Workers」一节。
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "laundry-radar",
   "main": "worker.mjs",
