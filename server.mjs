@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -33,6 +33,17 @@ const defaultPositions = [
   { key: "basement-washer", name: "负一层洗衣机", positionId: "37148", categoryCode: "00", floorCode: "B1" },
   { key: "basement-dryer", name: "负一层烘干机", positionId: "37148", categoryCode: "02", floorCode: "" }
 ];
+
+// SZU 南区上游配置
+const szuBaseUrl = "https://v3-api.china-qzxy.cn";
+const szuDefaultAreaId = "1";
+const szuDefaultBuildingId = "245";
+const szuDefaultMarkId = "3";
+const szuFetchConcurrency = 2;
+const szuCacheTtl = 60 * 1000; // 60s 缓存
+const szuLoginTtl = 30 * 60 * 1000; // 30min 登录有效
+let szuCache = { positions: null, fetchedAt: 0 };
+let szuLoginCache = { loginCode: null, userId: null, accountId: null, projectId: null, expiresAt: 0 };
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -122,25 +133,30 @@ function readSharedEmailConfig() {
   }
 }
 
-function parseEmailSection(text) {
-  const email = {};
-  let inEmailSection = false;
+function parseConfigSection(text, sectionName) {
+  const result = {};
+  let inSection = false;
 
   for (const rawLine of String(text || "").replace(/^\uFEFF/, "").split(/\r?\n/)) {
-    if (/^email:\s*(?:#.*)?$/.test(rawLine)) {
-      inEmailSection = true;
+    const sectionPattern = new RegExp(`^${sectionName}:\\s*(?:#.*)?$`);
+    if (sectionPattern.test(rawLine)) {
+      inSection = true;
       continue;
     }
 
-    if (inEmailSection && /^\S/.test(rawLine)) break;
-    if (!inEmailSection) continue;
+    if (inSection && /^\S/.test(rawLine)) break;
+    if (!inSection) continue;
 
     const match = /^\s{2}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)(?:\s+#.*)?$/.exec(rawLine);
     if (!match) continue;
-    email[match[1]] = unquoteConfigValue(match[2]);
+    result[match[1]] = unquoteConfigValue(match[2]);
   }
 
-  return email;
+  return result;
+}
+
+function parseEmailSection(text) {
+  return parseConfigSection(text, "email");
 }
 
 function unquoteConfigValue(value) {
@@ -149,6 +165,30 @@ function unquoteConfigValue(value) {
     return text.slice(1, -1);
   }
   return text;
+}
+
+function readUpstreamConfig() {
+  const baseUrl = readEnv("UPSTREAM_BASE_URL") || szuBaseUrl;
+  const envPhone = readEnv("UPSTREAM_PHONE");
+  const envPassword = readEnv("UPSTREAM_PASSWORD");
+
+  if (envPhone && envPassword) {
+    return { enabled: true, baseUrl, phone: envPhone, password: envPassword };
+  }
+
+  try {
+    const configPath = join(__dirname, "config.yaml");
+    const upstream = parseConfigSection(readFileSync(configPath, "utf8"), "upstream");
+    const phone = String(upstream.phone || "").trim();
+    const password = String(upstream.password || "").trim();
+    if (phone && password) {
+      return { enabled: true, baseUrl, phone, password };
+    }
+  } catch {
+    // config file not found or unreadable
+  }
+
+  return { enabled: false, baseUrl, phone: "", password: "" };
 }
 
 function parseConfigBoolean(value, defaultValue) {
@@ -433,6 +473,17 @@ function upstreamHeaders(pageUrl = "subPages/shop/detail") {
   };
 }
 
+function szuHeaders(projectId) {
+  return {
+    "Config-Project": String(projectId),
+    "Config-Keys": "module_list,advertise_type,question_list,service_phone_list,banner_list_app,activity_list_app",
+    "Host": new URL(szuBaseUrl).host,
+    "Connection": "Keep-Alive",
+    "Accept-Encoding": "gzip",
+    "User-Agent": "okhttp/4.2.2"
+  };
+}
+
 async function fetchAllPositions() {
   let positions;
   try {
@@ -631,18 +682,243 @@ async function fetchPositionCategory(position, categoryCode) {
   };
 }
 
+// ─── SZU 南区上游 ─────────────────────────────────────────────
+
+function szuHashPassword(password) {
+  return createHash("md5").update(String(password)).digest("hex").toUpperCase().slice(-10);
+}
+
+async function ensureSzuLogin(config) {
+  if (szuLoginCache.loginCode && Date.now() < szuLoginCache.expiresAt) {
+    return szuLoginCache;
+  }
+
+  const body = new URLSearchParams({
+    identifier: "",
+    password: szuHashPassword(config.password),
+    phoneSystem: "android",
+    telephone: config.phone,
+    type: "0",
+    version: "6.5.21"
+  });
+
+  const response = await fetch(`${config.baseUrl}/user/login`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "user-agent": "okhttp/4.2.2"
+    },
+    body: body.toString()
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`SZU login 返回非 JSON: HTTP ${response.status}`);
+  }
+
+  if (!parsed.success || parsed.errorCode !== 0) {
+    throw new Error(`SZU 登录失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+  }
+
+  const userData = parsed.data || {};
+  const account = userData.userAccount || {};
+
+  szuLoginCache = {
+    loginCode: userData.loginCode,
+    userId: userData.userId,
+    accountId: account.accountId,
+    projectId: account.projectId,
+    expiresAt: Date.now() + szuLoginTtl
+  };
+
+  console.error(`SZU 登录成功, userId=${userData.userId}, projectId=${account.projectId}`);
+  return szuLoginCache;
+}
+
+async function szuFetchAreaList(config, loginInfo) {
+  const params = new URLSearchParams({
+    accountId: String(loginInfo.accountId),
+    telPhone: config.phone,
+    areaId: szuDefaultAreaId,
+    markId: szuDefaultMarkId,
+    phoneSystem: "android",
+    loginCode: loginInfo.loginCode,
+    childTypeId: "0",
+    telephone: config.phone,
+    projectId: String(loginInfo.projectId),
+    userId: String(loginInfo.userId),
+    version: "6.5.21"
+    // 不传 buildingId，获取所有楼栋（春笛、夏筝、秋瑟、冬筑）
+  });
+
+  const response = await fetch(`${config.baseUrl}/device/reservation/wash/area/List/v2?${params}`, {
+    headers: szuHeaders(loginInfo.projectId)
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`SZU area/List/v2 返回非 JSON: HTTP ${response.status}`);
+  }
+
+  if (!parsed.success || parsed.errorCode !== 0) {
+    throw new Error(`SZU area/List/v2 失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+  }
+
+  return Array.isArray(parsed.data) ? parsed.data : [];
+}
+
+async function szuFetchDeviceList(config, loginInfo, area) {
+  const params = new URLSearchParams({
+    markId: szuDefaultMarkId,
+    loginCode: loginInfo.loginCode,
+    pageSize: "20",
+    childTypeId: "0",
+    telephone: config.phone,
+    userId: String(loginInfo.userId),
+    version: "6.5.21",
+    buildingId: String(area.buildingId || szuDefaultBuildingId),
+    floorId: String(area.floorId || area.id || ""),
+    accountId: String(loginInfo.accountId),
+    telPhone: config.phone,
+    areaId: String(area.areaId || szuDefaultAreaId),
+    pageIndex: "1",
+    phoneSystem: "android",
+    projectId: String(loginInfo.projectId)
+  });
+
+  const response = await fetch(`${config.baseUrl}/device/reservation/wash/device/List?${params}`, {
+    headers: szuHeaders(loginInfo.projectId)
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`SZU device/List 返回非 JSON: HTTP ${response.status}`);
+  }
+
+  if (!parsed.success || parsed.errorCode !== 0) {
+    throw new Error(`SZU device/List 失败: ${parsed.errorMessage || `errorCode ${parsed.errorCode}`}`);
+  }
+
+  return Array.isArray(parsed.data) ? parsed.data : [];
+}
+
+function normalizeSZUAreaToPosition(building, devices) {
+  const buildingName = String(building.buildingName || building.name || "");
+  // "冬筑沧海校区" → "冬筑沧海校区"（保留完整名称）
+  const name = buildingName;
+
+  return {
+    key: `szu-${building.buildingId || "0"}`,
+    name,
+    positionId: String(building.buildingId || "0"),
+    categoryCode: "00",
+    categoryCodeList: ["00"],
+    floorCode: "",
+    state: 1,
+    workTime: "",
+    idleCount: devices.filter((d) => Number(d.isUse) === 0).length,
+    reserveNum: 0,
+    enableReserve: false,
+    items: devices.map((device) => {
+      const floorCode = String(device._floorName || "").replace(/层$/, "").trim();
+      const floorPrefix = floorCode ? `${floorCode}层-` : "";
+      return {
+        deviceId: device.deviceId,
+        name: floorPrefix + (device.deviceName || device.roomName || `设备 ${device.deviceId}`),
+        state: Number(device.isUse) === 0 ? 1 : 2,
+        categoryCode: String(device.childTypeId || "00"),
+        floorCode,
+        workStatusName: device.workStatusName || "",
+        onlineStatusId: device.onlineStatusId,
+        macAddress: device.macAddress
+      };
+    }),
+    total: devices.length,
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+async function fetchSZUStatus(config) {
+  if (szuCache.positions && Date.now() - szuCache.fetchedAt < szuCacheTtl) {
+    return szuCache.positions;
+  }
+
+  const loginInfo = await ensureSzuLogin(config);
+  const areas = await szuFetchAreaList(config, loginInfo);
+
+  if (!areas.length) {
+    szuCache = { positions: [], fetchedAt: Date.now() };
+    return [];
+  }
+
+  // 按 buildingId 分组，每栋楼合并为一个 position
+  const buildingMap = new Map();
+  for (const area of areas) {
+    const bid = area.buildingId;
+    if (bid == null) continue;
+    if (!buildingMap.has(bid)) {
+      buildingMap.set(bid, { buildingId: bid, buildingName: area.buildingName, floors: [] });
+    }
+    buildingMap.get(bid).floors.push(area);
+  }
+
+  const positions = await mapLimit([...buildingMap.values()], szuFetchConcurrency, async (building) => {
+    const allDevices = [];
+    for (const area of building.floors) {
+      try {
+        const devices = await szuFetchDeviceList(config, loginInfo, area);
+        for (const d of devices) {
+          d._floorName = area.floorName; // 保留楼层信息用于前缀
+        }
+        allDevices.push(...devices);
+      } catch (error) {
+        console.error(`SZU ${building.buildingName} ${area.floorName || area.floorId}: ${error.message}`);
+      }
+    }
+    return normalizeSZUAreaToPosition(building, allDevices);
+  });
+
+  const validPositions = positions.filter(Boolean);
+  szuCache = { positions: validPositions, fetchedAt: Date.now() };
+  return validPositions;
+}
+
 async function handleStatus(req, res) {
   try {
     const raw = await readRequestBody(req);
     const payload = raw ? JSON.parse(raw) : {};
 
+    // 1. 海尔上游（粤海校区）
     const requested = Array.isArray(payload.positions) && payload.positions.length
       ? payload.positions.map(normalizePositionInput).filter(Boolean)
       : null;
 
-    const positions = requested
+    const haierPositions = requested
       ? await mapLimit(requested, positionFetchConcurrency, fetchPosition)
       : await fetchAllPositions();
+
+    // 2. SZU 上游（南区，并行拉取）
+    const upstreamConfig = readUpstreamConfig();
+    let szuPositions = [];
+    if (upstreamConfig.enabled) {
+      try {
+        szuPositions = await fetchSZUStatus(upstreamConfig);
+      } catch (error) {
+        console.error(`SZU 上游拉取失败: ${error.message}`);
+        // SZU 失败不阻塞海尔数据的返回
+      }
+    }
+
+    const positions = [...haierPositions, ...szuPositions];
 
     processSubscriptions({ positions }).catch((error) => {
       console.error(`subscription check after status failed: ${error.message}`);
