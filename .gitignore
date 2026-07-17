@@ -7,3 +7,4 @@ data/
 config.yaml
 .wrangler/
 .dev.vars
+.gstack/

@@ -667,19 +667,11 @@ async function ensureSzuLogin(config) {
   }
 }
 
-function szuHeaders(projectId, baseUrl = szuBaseUrl) {
-  let host = "v3-api.china-qzxy.cn";
-  try {
-    host = new URL(baseUrl).host;
-  } catch {
-    // keep default host
-  }
+function szuHeaders(projectId) {
+  // Workers fetch manages Host/Connection/Accept-Encoding; do not set them.
   return {
     "Config-Project": String(projectId),
     "Config-Keys": "module_list,advertise_type,question_list,service_phone_list,banner_list_app,activity_list_app",
-    Host: host,
-    Connection: "Keep-Alive",
-    "Accept-Encoding": "gzip",
     "User-Agent": "okhttp/4.2.2"
   };
 }
@@ -719,7 +711,7 @@ async function szuFetchAreaList(config, loginInfo) {
   });
 
   const response = await fetch(`${config.szu.baseUrl}/device/reservation/wash/area/List/v2?${params}`, {
-    headers: szuHeaders(loginInfo.projectId, config.szu.baseUrl)
+    headers: szuHeaders(loginInfo.projectId)
   });
 
   const parsed = await szuParseJsonResponse(response, "SZU area/List/v2");
@@ -746,7 +738,7 @@ async function szuFetchDevicePage(config, loginInfo, area, pageIndex, pageSize) 
   });
 
   const response = await fetch(`${config.szu.baseUrl}/device/reservation/wash/device/List?${params}`, {
-    headers: szuHeaders(loginInfo.projectId, config.szu.baseUrl)
+    headers: szuHeaders(loginInfo.projectId)
   });
 
   const parsed = await szuParseJsonResponse(response, "SZU device/List");
